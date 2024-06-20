@@ -167,4 +167,8 @@ cython_debug/
 02_data/03_meeting_data/*.json
 01_simulation/03_traci/stable[0-9]*.xml
 02_data/01_simulation_results/*
+02_data/meeting_vehicles_broad_[0-9]*.json
+02_data/03_meeting_data/**
+
+**.swp
 
