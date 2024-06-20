@@ -164,6 +164,7 @@ cython_debug/
 02_data/02_test_data/fl_test_data.pickle
 02_data/03_meeting_data/*.csv
 02_data/03_meeting_data/**/*.csv
+02_data/03_meeting_data/*.json
 01_simulation/03_traci/stable[0-9]*.xml
 02_data/01_simulation_results/*
 
