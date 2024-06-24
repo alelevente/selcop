@@ -1,0 +1,8 @@
+FROM tensorflow/tensorflow:latest-gpu
+
+COPY train_server.py train_server.py
+COPY neural_network.py neural_network.py
+COPY training_configuration.json training_configuration.json
+
+RUN pip install pandas
+RUN pip install tqdm
