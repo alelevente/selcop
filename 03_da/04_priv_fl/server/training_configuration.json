@@ -1,0 +1,11 @@
+{
+    "addresses": ["http://train0:5000/compute",
+        "http://train1:5001/compute",
+        "http://train2:5002/compute",
+        "http://train3:5003/compute",
+        "http://train4:5004/compute",
+        "http://train5:5005/compute"],
+    "shutdown": ["train0", "train1", "train2", "train3", "train4", "train5"]
+}
+        
+    

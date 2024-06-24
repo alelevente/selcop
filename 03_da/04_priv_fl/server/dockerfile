@@ -1,0 +1,9 @@
+FROM tensorflow/tensorflow:latest
+
+COPY train_server.py train_server.py
+COPY neural_network.py neural_network.py
+COPY inference_methods.py inference_methods.py
+COPY training_configuration.json training_configuration.json
+
+RUN pip install pandas
+RUN pip install tqdm

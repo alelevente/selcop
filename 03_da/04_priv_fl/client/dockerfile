@@ -1,0 +1,6 @@
+FROM tensorflow/tensorflow:latest-gpu
+
+COPY train_client.py train_client.py
+COPY neural_network.py neural_network.py
+
+RUN pip install --ignore-installed flask
