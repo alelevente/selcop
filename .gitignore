@@ -171,6 +171,8 @@ cython_debug/
 02_data/03_meeting_data/**
 02_data/07_loc_privacy/*.json
 02_data/07_loc_privacy/*.csv
+02_data/05_fl_privacy/broad/*.csv
+02_data/05_fl_privacy/narrow/*.csv
 
 **.swp
 
