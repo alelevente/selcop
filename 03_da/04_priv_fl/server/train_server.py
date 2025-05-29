@@ -19,7 +19,8 @@ import copy
 from tqdm import trange
 
 
-SEEDS = [42, 1234, 1867, 613, 1001]
+#SEEDS = [42, 1234, 1867, 613, 1001]
+SEEDS = [704, 882, 405, 269, 120]
 SHARED_DATA_ROOT = "/meeting_data"
 RESULT_PATH = "/results"
 SIMULATION_PATH = "/simulation_results"

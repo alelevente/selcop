@@ -18,8 +18,10 @@ import copy
 from tqdm import trange
 
 
-SEEDS = [42, 1234, 1867, 613, 1001]
-SHARING_METHODS = ["ref", "all_data", "alters", "zopt"]
+#SEEDS = [42, 1234, 1867, 613, 1001]
+SEEDS = [704, 882, 405, 269, 120]
+#SHARING_METHODS = ["ref", "all_data", "alters", "zopt"]
+SHARING_METHODS = ["zopt"]
 
 SHARED_DATA_ROOT = "/meeting_data"
 RESULT_PATH = "/results"

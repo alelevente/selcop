@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2024-02-22 14:04:08 by Eclipse SUMO netgenerate Version 1.19.0
-<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netgenerateConfiguration.xsd">
+<!-- generated on 2025-05-02 22:06:56 by Eclipse SUMO netgenerate Version 1.22.0
+<netgenerateConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netgenerateConfiguration.xsd">
 
     <random_network>
         <rand value="true"/>
@@ -28,10 +28,10 @@
         <no-turnarounds.except-deadend value="true"/>
     </junctions>
 
-</configuration>
+</netgenerateConfiguration>
 -->
 
-<net version="1.16" junctionCornerDetail="5" limitTurnSpeed="5.50" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
+<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
     <location netOffset="500.00,400.00" convBoundary="0.00,0.00,900.00,1100.00" origBoundary="-500.00,-400.00,400.00,700.00" projParameter="!"/>
 

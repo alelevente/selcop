@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:latest-gpu
+FROM tensorflow/tensorflow:2.16.1-gpu
 
 COPY train_client.py train_client.py
 COPY neural_network.py neural_network.py
