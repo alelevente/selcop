@@ -6,6 +6,6 @@ In this repository, we created a cooperative federated learning in which the par
 ## Content
 
 This repository contains source codes for:
-1. simulating the traffic of a small generated town
+1. simulating the traffic of Hannover (HaTS) in Eclispe SUMO
 2. defining different algorithms to select records to exchange between vehicles
 3. analyzing the capabilities of the proposed system.
