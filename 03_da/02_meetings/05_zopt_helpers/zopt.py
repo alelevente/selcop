@@ -63,6 +63,7 @@ def prepare_dataset(dataset, probabilities, idx_to_edge):
 
     for i in range(len(probs_arg)-1, -1, -1):
         idx = str(probs_arg[i])
+        #idx = probs_arg[i]
         edge = idx_to_edge[idx]
 
         edge_data = dataset[dataset["edge"] == edge]
@@ -153,7 +154,7 @@ def new_ego_concession(last_deal, not_yet_in_deal, possible_steps,
             not_yet_in_deal_update = copy.deepcopy(not_yet_in_deal)
             #handling already selected but not sampled data:
             for edge in min_step:
-                for x in edge:
+                for x in min_step[edge]:
                     if edge in not_yet_in_deal:
                         if x in not_yet_in_deal_update[edge]:
                             not_yet_in_deal_update[edge].remove(x)
@@ -296,7 +297,7 @@ def run_zopt(dataset, probabilities, idx_to_edge, position, time, verbose=False)
     ua_des.append(alter_utility(act_deal_ego, EPA))
     ua_das.append(alter_utility(act_deal_alter, EPA))
     last_added_idx = 0
-    while ego_utility(act_deal_alter, EPA) < ego_utility(act_deal_ego, EPA):
+    while (ego_utility(act_deal_alter, EPA) < ego_utility(act_deal_ego, EPA)) and ((len(possible_moves_alter)>0) and len(possible_moves_ego)>0):
         ego_risk = calc_ego_risk(act_deal_ego, act_deal_alter, EPA, verbose)
         alter_risk = calc_alter_risk(act_deal_alter, act_deal_ego, EPA, verbose)
         if verbose:
@@ -313,7 +314,7 @@ def run_zopt(dataset, probabilities, idx_to_edge, position, time, verbose=False)
             act_deal_ego = deal_ego if not (deal_ego is None) else act_deal_ego
         else:
             if verbose:
-                print("Alter creates a new concession")
+                print(f"Alter creates a new concession ({len(possible_moves_alter)} possiblities)")
             deal_alter, not_yet_in_alter, possible_moves_alter = new_alter_concession(act_deal_alter, not_yet_in_alter,
                                                                                           possible_moves_alter,
                                                                                           ideal, ideal_keys,

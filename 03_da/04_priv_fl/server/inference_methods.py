@@ -18,14 +18,15 @@ def create_difference_dataset(global_predict, vehicle_predict):
     p_diffs = {}
 
     for p in global_predict:
-        pred_vehicle = np.array(vehicle_predict[p])
-        pred_global = global_predict[p]
+        if p in vehicle_predict:
+            pred_vehicle = np.array(vehicle_predict[p])
+            pred_global = global_predict[p]
         
-        p_diffs[p] = (pred_vehicle-pred_global)**2
+            p_diffs[p] = (pred_vehicle-pred_global)**2
                  
     return p_diffs
 
-def predict_eval_positions(p_diffs, true_parkings, num_parking_lots = 10):
+def predict_eval_positions(p_diffs, true_edges, num_edges = 10):
     '''
         Maliciously infers possibly visited parking lots from
         prediction differences. Then evaluates the success rate of the attacker.
@@ -33,7 +34,7 @@ def predict_eval_positions(p_diffs, true_parkings, num_parking_lots = 10):
         Parameters:
             - p_diffs: prediction differences
             - true_parkings: list of the parking lots which were visited by a vehicle
-            - num_parking_lots: how many lots try to guess
+            - num_edges: how many edges try to guess
             
         Returns:
             - the successfully identified parking lots (out of the prescribed num_parking_lots)
@@ -46,9 +47,9 @@ def predict_eval_positions(p_diffs, true_parkings, num_parking_lots = 10):
     p_diff_series = pd.Series(p_diff_means)
 
     #converting to sets to be able to get the prediction as an intersection
-    predicted_ps = set(p_diff_series.nlargest(num_parking_lots).index)
-    true_parkings = set(true_parkings)
-    intersection = predicted_ps.intersection(true_parkings)
+    predicted_ps = set(p_diff_series.nlargest(num_edges).index)
+    true_parkings = set(true_edges)
+    intersection = predicted_ps.intersection(true_edges)
     return intersection
 
 def search_nearest_move_bin_(pred_time, move_bins_bins, move_bins_counts):
@@ -104,7 +105,7 @@ def predict_eval_time(p_diffs, true_moving_times, time_window=900):
     
     time_diffs = {}
     for p in p_diffs:
-        for t in range(0, 24*60*60, time_window):
+        for t in range(0, 2*60*60, time_window):
             if t in time_diffs:
                 time_diffs[t] += np.mean(p_diffs[p][t:t+time_window])
             else:
@@ -112,7 +113,7 @@ def predict_eval_time(p_diffs, true_moving_times, time_window=900):
     
     time_diffs_series = pd.Series(time_diffs) #to be able to run handy functions
     
-    prediction_diff_rates_x = np.arange(time_window, 24*60*60, time_window) #1 step shorter because of the differentiation
+    prediction_diff_rates_x = np.arange(time_window, 2*60*60, time_window) #1 step shorter because of the differentiation
     prediction_diff_rates_y = np.abs(np.diff(time_diffs_series.values)) #|d/dt(time_diff(x, t))|
     prediction_diff_rates = pd.Series(data = prediction_diff_rates_y, index = prediction_diff_rates_x)
     pred_time = np.clip(prediction_diff_rates.index[prediction_diff_rates.argmax()]/(24*60*60), a_min=0.0, a_max=.9999999)

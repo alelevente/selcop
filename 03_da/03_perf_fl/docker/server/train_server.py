@@ -18,10 +18,10 @@ import copy
 from tqdm import trange
 
 
-#SEEDS = [42, 1234, 1867, 613, 1001]
-SEEDS = [704, 882, 405, 269, 120]
-#SHARING_METHODS = ["ref", "all_data", "alters", "zopt"]
-SHARING_METHODS = ["zopt"]
+TRAIN_SEEDS = [42, 1234, 1867, 613, 1001, 704, 882, 405]
+TEST_SEEDS = [269, 120]
+SHARING_METHODS = ["ref", "all_data", "alters", "zopt"]
+#SHARING_METHODS = ["zopt"]
 
 SHARED_DATA_ROOT = "/meeting_data"
 RESULT_PATH = "/results"
@@ -37,27 +37,22 @@ import logging, os
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-with open("/data/one_hot_encoding_dict.json") as f:
-    oh_encoding_dict = json.load(f)
+with open("/data/edge_maps.json") as f:
+    edge_map = json.load(f)["edge_to_idx"]
     
 
 def train_client(args):
-    day = args["day"] + 4
     vehicle = args["vehicle"]
     method = args["sharing_method"]
 
     vehicle_data = pd.DataFrame()
-    for s in SEEDS:
+    for s in TRAIN_SEEDS:
         datasource = f"{SHARED_DATA_ROOT}/{method}/{s}/{vehicle}.csv"
         pf = pd.read_csv(datasource)
         pf["seed"] = [s]*len(pf)
         vehicle_data = pd.concat([vehicle_data, pf])
 
-    true_parkings = vehicle_data["parking_id"].unique()
-    train_features, train_labels = neural_network.prepare_train_data(vehicle_data,
-                                                                     day*24*60*60,
-                                                                     (day+1)*24*60*60,
-                                                                     parking_map)
+    train_features, train_labels = neural_network.prepare_train_data(vehicle_data, edge_map)
     
     if len(train_features) == 0:
         return {"model_update": [],
@@ -100,17 +95,15 @@ def combine_commuters(veh_id):
         return veh_id.split(":")[0]
     return veh_id
 
-def _prepare_eval_data(dataset, min_time, max_time, parking_map):
-    dataset = dataset[dataset["time"] >= min_time]
-    dataset = dataset[dataset["time"] < max_time].copy()
-    dataset["time_of_day"] = dataset["time"] % (24*60*60)
-    dataset["time_of_day"] = dataset["time_of_day"] / (24*60*60)
-    labels = dataset["occupancy"].copy()
+def _prepare_eval_data(dataset, edge_map):
+    dataset = dataset.sample(frac = .1)
+    dataset["time_of_day"] = dataset["time"] / (24*60*60)
+    labels = dataset["rel_speed"].copy()
 
-    features = np.zeros((len(dataset), len(parking_map)+1)) #one-hot-encoded parking_id | time_of_day
+    features = np.zeros((len(dataset), len(edge_map)+1)) #one-hot-encoded edge_id | time_of_day
     i = 0
     for _,r in dataset.iterrows():
-        features[i,parking_map[r["parking_id"]]] = 1.0
+        features[i,edge_map[r["edge"]]] = 1.0
         i += 1
     features[:,-1] = dataset["time_of_day"]
     return features, labels
@@ -126,32 +119,15 @@ if __name__ == "__main__":
 
     with open("/data/veh_list.json") as f:
         veh_map = json.load(f)
-    test_vehicles = veh_map["test_vehs"]
-
-    with open("/data/parking_map.json") as f:
-        parking_map = json.load(f)
+    test_vehicles = veh_map["first_2h"]
 
     #FL evaluation data:
-    p_data = pd.DataFrame()
-    #READING DATA:
-    for s in SEEDS:
-        filename =f"{SIMULATION_PATH}/poccup_by_vehs_{s}.csv"
-        pf = pd.read_csv(filename)
-        pf["seed"] = [s]*len(pf)
-        p_data = pd.concat([p_data, pf])
-        
-    
-
-    #last day is the evaluation day:
-    p_data = p_data[p_data["time"] > min(p_data["time"])+4*24*60*60]
-    p_data["veh_id"] = p_data["veh_id"].apply(combine_commuters)
-    X_eval, y_eval = _prepare_eval_data(p_data,
-                                        min_time=min(p_data["time"]),
-                                        max_time=max(p_data["time"]),
-                                        parking_map=parking_map)
+    combined_df = pd.read_csv(f"{SHARED_DATA_ROOT}/combined_dataset.csv")
+    combined_df = combined_df[combined_df["seed"].isin(TEST_SEEDS)]
+    X_eval, y_eval = _prepare_eval_data(combined_df, edge_map)
 
     
-    logical_gpu = [tf.config.LogicalDeviceConfiguration(memory_limit=1536)]
+    logical_gpu = [tf.config.LogicalDeviceConfiguration(memory_limit=2048)]
     physical_devices = tf.config.list_physical_devices("GPU")
     try:
         tf.config.set_logical_device_configuration(
@@ -164,6 +140,7 @@ if __name__ == "__main__":
     devices = tf.config.list_logical_devices("GPU")
     if len(devices) == 0:
         gpu = tf.config.list_logical_devices()[0]
+        tf.config.experimental.set_memory_growth(gpu, True)
     else:
         gpu = devices[0]
 
@@ -177,7 +154,7 @@ if __name__ == "__main__":
                 print(f"===================== DAY {day} ======================")
                 #selecting vehicles to train:
                 inference_results = {}
-                sel_vehicles = np.random.choice(test_vehicles, 250, replace=False)
+                sel_vehicles = np.random.choice(test_vehicles, 100, replace=False)
                 #for computational reasons, only a part of the test vehicles will be selected in a comm round:
                 for veh_range in trange(0, len(sel_vehicles), VEHICLES_PER_COMM_ROUND):
                     print(f"Vehicles: [{veh_range}: {veh_range+VEHICLES_PER_COMM_ROUND})")
@@ -186,10 +163,9 @@ if __name__ == "__main__":
                     weights = neural_network.encode_weights(nn.model.get_weights())
                     arguments = []
                     i = 0
-                    for vehicle in sel_vehicles[veh_range:(veh_range+VEHICLES_PER_COMM_ROUND)-1]:
+                    for vehicle in sel_vehicles[veh_range:min((veh_range+VEHICLES_PER_COMM_ROUND), len(sel_vehicles))]:
                         address = i%len(addresses)
                         arguments.append({
-                            "day": day,
                             "vehicle": vehicle,
                             "address": addresses[address],
                             "model_weights": weights,
@@ -214,7 +190,7 @@ if __name__ == "__main__":
                         pass
 
                 #evaluating federated model
-                test_val = nn.model.evaluate(x=X_eval, y=y_eval, batch_size=10000, verbose=False)
+                test_val = nn.model.evaluate(x=X_eval, y=y_eval, batch_size=1000, verbose=False)
                 if day != 0:
                     #reading the already existing file:
                     with open(f"/{RESULT_PATH}/{sm}/fl_eval_performance.json") as f:

@@ -33,14 +33,14 @@ class DataTree:
                 i += 1
         return my_node, points
     
-    def bfs_build(root, points, tcs):
+    def bfs_build(root, points, tcs, max_edges = 500):
         explored = [root]
         remaining = [root]
         nodes = {}
         root_node = DataTree.Node(root)
         nodes[root] = root_node
         
-        while len(remaining)>0:
+        while (len(remaining)>0) and (len(explored) < max_edges):
             edge = remaining[0]
             del remaining[0]
             explored.append(edge)

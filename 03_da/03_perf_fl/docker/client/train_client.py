@@ -37,6 +37,7 @@ try:
         physical_devices[0],
         logical_gpu
     )
+    tf.config.experimental.set_memory_growth(logical_gpu, True)
 except:
     pass
 

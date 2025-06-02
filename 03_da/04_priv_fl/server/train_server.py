@@ -19,8 +19,8 @@ import copy
 from tqdm import trange
 
 
-#SEEDS = [42, 1234, 1867, 613, 1001]
-SEEDS = [704, 882, 405, 269, 120]
+TRAIN_SEEDS = [42, 1234, 1867, 613, 1001, 704, 882, 405]
+TEST_SEEDS = [269, 120]
 SHARED_DATA_ROOT = "/meeting_data"
 RESULT_PATH = "/results"
 SIMULATION_PATH = "/simulation_results"
@@ -36,74 +36,61 @@ import logging, os
 logging.disable(logging.WARNING)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-def combine_commuters(veh_id):
-    if veh_id.startswith("carIn"):
-        return veh_id.split(":")[0]
-    return veh_id
-
-with open("/data/one_hot_encoding_dict.json") as f:
-    oh_encoding_dict = json.load(f)
+with open("/data/edge_maps.json") as f:
+    edge_map = json.load(f)["edge_to_idx"]
 
 #################################################################
 ############## PRETRAINING A GLOBAL MODEL #######################
-def pretrain_model(parking_map, vehicles):
+def pretrain_model(edge_map, vehicles):
     
-    def _sample_a_batch(X, y, portion=1.0, parking_map=None):
+    def _sample_a_batch(X, y, portion=1.0, edge_map=None):
         train_indices = np.random.randint(0, len(X), int(len(X)*portion))
         x_batch = X.iloc[train_indices]
         y_batch = y.iloc[train_indices]
         
-        features = np.zeros((len(x_batch), len(parking_map)+1))
+        features = np.zeros((len(x_batch), len(edge_map)+1))
         j = 0
         for i,r in x_batch.iterrows():
-            features[j,oh_encoding_dict[r["parking_id"]]]=1.0
-            features[j,-1] = r["time_of_day"]
+            if r["edge"] in edge_map:
+                features[j,edge_map[r["edge"]]]=1.0
+                features[j,-1] = r["time_of_day"]
             j += 1
         
         return features, np.array(y_batch)
     
-    p_data = pd.DataFrame()
-    #READING DATA:
-    for s in SEEDS:
-        filename = f"{SIMULATION_PATH}/poccup_by_vehs_{s}.csv"
-        pf = pd.read_csv(filename)
-        pf["seed"] = [s]*len(pf)
-        p_data = pd.concat([p_data, pf])
-        
-    p_data["veh_id"] = p_data["veh_id"].apply(combine_commuters)
-    parkings = p_data["parking_id"].unique()
-    
-    p_data["time"] = p_data["time"] - 4*24*60*60
-    p_data["time"] = p_data["time"].astype(int)
-    p_data["time_of_day"] = (p_data["time"] - (p_data["time"] // (24*60*60))*24*60*60) / (24*60*60) #converting to 0.0-1.0 and removing periodicity
+    combined_df = pd.read_csv(f"{SHARED_DATA_ROOT}/combined_dataset.csv")
+    combined_df = combined_df[combined_df["seed"].isin(TRAIN_SEEDS)]
+    combined_df["time_of_day"] = combined_df["time"] / (24*60*60)
            
     #creating datasets:
-    p_train = p_data[p_data["veh_id"].isin(vehicles)]
+    combined_df = combined_df[combined_df["veh_id"].isin(vehicles)]
 
-    X_train = p_train.drop(columns=["veh_id", "time", "occupancy", "seed"])
-    y_train = p_train["occupancy"]
+    X_train = combined_df.drop(columns=["veh_id", "time", "rel_speed", "seed", "hash"])
+    y_train = combined_df["rel_speed"]
     
     train_indices = np.random.randint(0, len(X_train), 1000000)
     x_train_batch = X_train.iloc[train_indices]
     y_train_batch = y_train.iloc[train_indices]
-    x_train_batch, y_train_batch = _sample_a_batch(x_train_batch, y_train_batch, parking_map=parking_map)
+    x_train_batch, y_train_batch = _sample_a_batch(x_train_batch, y_train_batch, edge_map=edge_map)
     
     with tf.device('/CPU:0'):
         nn = neural_network.NeuralNetwork()
         callbacks = [tf.keras.callbacks.EarlyStopping(monitor="loss", patience=3)]
 
         history = nn.model.fit(x=x_train_batch, y=y_train_batch, epochs=5, batch_size=10000, callbacks=callbacks)
-        while len(history.history["loss"])%5 == 0:
+        epoch = 0
+        while (len(history.history["loss"])%5 == 0) and (epoch<50):
             history = nn.model.fit(x=x_train_batch, y=y_train_batch, epochs=5, batch_size=10000, callbacks=callbacks)
+            epoch += 5
             
     return nn.model
 #################################################################
         
-def _generate_test_data_for_p(parking):
-    test_data_p = np.zeros((24*60*60, len(oh_encoding_dict)+1)).astype(np.float32)
-    i = oh_encoding_dict[parking]
+def _generate_test_data_for_p(edge):
+    test_data_p = np.zeros((2*60, len(edge_map)+1)).astype(np.float32)
+    i = edge_map[edge]
     test_data_p[:,i] = 1.0
-    test_data_p[:,-1] = np.linspace(0.0, 1.0, len(test_data_p))
+    test_data_p[:,-1] = np.linspace(0.0, (24*60*60)/7200.0+1, len(test_data_p))
     return test_data_p
 
 def train_client(args):
@@ -111,19 +98,18 @@ def train_client(args):
     method = args["sharing_method"]
     global_predictions = args["global_predictions"]
 
+    #print("client loads data", flush=True)
     vehicle_data = pd.DataFrame()
-    for s in SEEDS:
+    for s in TRAIN_SEEDS:
         datasource = f"{SHARED_DATA_ROOT}/{method}/{s}/{vehicle}.csv"
         pf = pd.read_csv(datasource)
         pf["seed"] = [s]*len(pf)
         vehicle_data = pd.concat([vehicle_data, pf])
 
     own_data = vehicle_data[vehicle_data["receive_time"] == -1]
-    true_parkings = own_data["parking_id"].unique()
-    train_features, train_labels = neural_network.prepare_train_data(vehicle_data,
-                                                                     4*24*60*60,
-                                                                     10*24*60*60,
-                                                                     parking_map)
+    true_edges = own_data["edge"].unique()
+    #print("client prepares dataset", flush=True)
+    train_features, train_labels = neural_network.prepare_train_data(vehicle_data, edge_map)
     
     if len(train_features) == 0:
         return {"model_update": [],
@@ -136,27 +122,34 @@ def train_client(args):
         "epochs": 1
     }
     try:
+        #print("sending training request", flush=True)
         r = requests.post(args["address"], json=payload)
 
+        #print("response received", flush=True)
         response = json.loads(r.text)
 
         #location inference:
+        #print(f"response: {response}", flush=True)
         vehicle_predictions = response["test_results"]
+        #print(f"response resutls: {list(vehicle_predictions.keys())[:10]}", flush=True)
 
-        p_diffs = inference_methods.create_difference_dataset(global_predictions, vehicle_predictions)
-        pred_lots = inference_methods.predict_eval_positions(p_diffs, true_parkings)
-        offset = inference_methods.predict_eval_time(p_diffs, train_features[:,-1])
+        e_diffs = inference_methods.create_difference_dataset(global_predictions, vehicle_predictions)
+        #print("difference calculations complete")
+        pred_lots = inference_methods.predict_eval_positions(e_diffs, true_edges)
+        offset = inference_methods.predict_eval_time(e_diffs, train_features[:,-1])
 
         inferenced = {
             "positions": list(pred_lots),
             "time_offset": offset
         }
+        #print(inferenced, flush=True)
 
         return {
             "inference_results": inferenced,
             "vehicle": vehicle
         }
-    except:
+    except Exception as e:
+    #    print(f"error occured: {e}", flush=True)
         return {"inference_results": [],
                 "vehicle": vehicle}
 
@@ -172,17 +165,15 @@ def fed_avg(model_weights, samples):
 
     return layers
 
-def _prepare_eval_data(dataset, min_time, max_time, parking_map):
-    dataset = dataset[dataset["time"] >= min_time]
-    dataset = dataset[dataset["time"] < max_time].copy()
-    dataset["time_of_day"] = dataset["time"] % (24*60*60)
-    dataset["time_of_day"] = dataset["time_of_day"] / (24*60*60)
-    labels = dataset["occupancy"].copy()
+def _prepare_eval_data(dataset, edge_map):
+    dataset = dataset.sample(frac = .1)
+    dataset["time_of_day"] = dataset["time"] / (24*60*60)
+    labels = dataset["rel_speed"].copy()
 
-    features = np.zeros((len(dataset), len(parking_map)+1)) #one-hot-encoded parking_id | time_of_day
+    features = np.zeros((len(dataset), len(edge_map)+1)) #one-hot-encoded edge_id | time_of_day
     i = 0
     for _,r in dataset.iterrows():
-        features[i,parking_map[r["parking_id"]]] = 1.0
+        features[i,edge_map[r["edge"]]] = 1.0
         i += 1
     features[:,-1] = dataset["time_of_day"]
     return features, labels
@@ -198,21 +189,18 @@ if __name__ == "__main__":
     with open("/data/veh_list.json") as f:
         vehs = json.load(f)
         
-    adversarial_targets = np.random.choice(vehs["test_vehs"], 300, replace=False)
+    adversarial_targets = np.random.choice(vehs["first_2h"], 200, replace=False)
     adversarial_global_trainers = np.random.choice(list(set(vehs["train_vehs"]+vehs["test_vehs"]).difference(adversarial_targets)), 3700, replace=False)
     test_vehicles = adversarial_targets
 
-    with open("/data/parking_map.json") as f:
-        parking_map = json.load(f)
-
     #pretraining a global data:
-    global_pretrained = pretrain_model(parking_map, adversarial_global_trainers)
+    global_pretrained = pretrain_model(edge_map, adversarial_global_trainers)
     
     #prepare baseline for inference methods:
     global_predictions = {}
-    #print("Computing reference predictions.")
+    #print("Computing reference predictions.", flush=True)
     with tf.device('/CPU:0'):
-        for p in parking_map:
+        for p in edge_map:
             test_data_p = _generate_test_data_for_p(p)
             global_predictions[p] = global_pretrained.predict(test_data_p, batch_size=10000, verbose=0)
 
@@ -226,7 +214,7 @@ if __name__ == "__main__":
 
                 arguments = []
                 i = 0
-                for vehicle in test_vehicles[veh_range:(veh_range+VEHICLES_PER_COMM_ROUND)-1]:
+                for vehicle in test_vehicles[veh_range:(veh_range+VEHICLES_PER_COMM_ROUND)]:
                     address = i%len(addresses)
                     arguments.append({
                         "vehicle": vehicle,
@@ -237,7 +225,7 @@ if __name__ == "__main__":
                     })
                     i += 1
 
-                #print("Dataset prepared. Start training.")
+                #print("Dataset prepared. Start training.", flush=True)
                 with Pool(NUM_CLIENTS) as pool:
                     results = pool.map(train_client, arguments)
                     for r in results:
